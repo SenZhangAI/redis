@@ -112,6 +112,8 @@ int siptlw(int c) {
         v2 = ROTL(v2, 32);                                                     \
     } while (0)
 
+// NOTE siphasn注解
+// param: in uint8_t[] 将输入统一转成八字节数组
 uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k) {
 #ifndef UNALIGNED_LE_CPU
     uint64_t hash;
@@ -121,10 +123,10 @@ uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k) {
     uint64_t v1 = 0x646f72616e646f6dULL;
     uint64_t v2 = 0x6c7967656e657261ULL;
     uint64_t v3 = 0x7465646279746573ULL;
-    uint64_t k0 = U8TO64_LE(k);
+    uint64_t k0 = U8TO64_LE(k); // NOTE? 这里 U8TO64_LE引用了k及其后一共8个字节，不怕万一内存越界么？
     uint64_t k1 = U8TO64_LE(k + 8);
     uint64_t m;
-    const uint8_t *end = in + inlen - (inlen % sizeof(uint64_t));
+    const uint8_t *end = in + inlen - (inlen % sizeof(uint64_t)); //NOTE trim末尾到64字节对齐
     const int left = inlen & 7;
     uint64_t b = ((uint64_t)inlen) << 56;
     v3 ^= k1;
