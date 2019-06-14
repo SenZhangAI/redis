@@ -77,7 +77,9 @@ typedef struct dict {
     dictType *type;
     void *privdata;
     dictht ht[2];
+    //NOTE rehashidx表示当前rehash进行到ht[0].table[rehashidx]了
     long rehashidx; /* rehashing not in progress if rehashidx == -1 */
+    //NOTE iterators 有多少个iterator(iter->safe==TRUE的iter, FALSE不计数)正在访问
     unsigned long iterators; /* number of iterators currently running */
 } dict;
 

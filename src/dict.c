@@ -146,6 +146,10 @@ int dictResize(dict *d)
 /* Expand or create the hash table */
 int dictExpand(dict *d, unsigned long size)
 {
+    //NOTE 如果正在Rehashing则不能Expand
+    //Expand的步骤是先zcalloc一个合适尺寸的table
+    //将其分配到ht[1]上，然后开始Rehashing步骤
+
     /* the size is invalid if it is smaller than the number of
      * elements already inside the hash table */
     if (dictIsRehashing(d) || d->ht[0].used > size)
@@ -155,6 +159,7 @@ int dictExpand(dict *d, unsigned long size)
     unsigned long realsize = _dictNextPower(size);
 
     /* Rehashing to the same table size is not useful. */
+    //NOTE expand到同样的大小(或或)没有任何意义
     if (realsize == d->ht[0].size) return DICT_ERR;
 
     /* Allocate the new hash table and initialize all pointers to NULL */
@@ -170,9 +175,10 @@ int dictExpand(dict *d, unsigned long size)
         return DICT_OK;
     }
 
+    //NOTE dictht n是栈上临时变量，这里拷贝复制到d->ht数组上
     /* Prepare a second hash table for incremental rehashing */
     d->ht[1] = n;
-    d->rehashidx = 0;
+    d->rehashidx = 0; //NOTE 开始rehash
     return DICT_OK;
 }
 
@@ -187,8 +193,10 @@ int dictExpand(dict *d, unsigned long size)
  * work it does would be unbound and the function may block for a long time. */
 int dictRehash(dict *d, int n) {
     int empty_visits = n*10; /* Max number of empty buckets to visit. */
+    //TODO NOTE 为什么是n*10
     if (!dictIsRehashing(d)) return 0;
 
+    //NOTE 一次性搬运n个ht[0]的bucket到ht[1]中
     while(n-- && d->ht[0].used != 0) {
         dictEntry *de, *nextde;
 
@@ -197,21 +205,24 @@ int dictRehash(dict *d, int n) {
         assert(d->ht[0].size > (unsigned long)d->rehashidx);
         while(d->ht[0].table[d->rehashidx] == NULL) {
             d->rehashidx++;
+            //NOTE 返回1表示还没结束rehash，但dictRehash的时间片用完(empty_visits == 0)，所以暂停
             if (--empty_visits == 0) return 1;
         }
-        de = d->ht[0].table[d->rehashidx];
+        de = d->ht[0].table[d->rehashidx]; //NOTE 指向第一个非NULL的bucket
         /* Move all the keys in this bucket from the old to the new hash HT */
         while(de) {
             uint64_t h;
 
             nextde = de->next;
             /* Get the index in the new hash table */
+            //note 算出ht[0]中的数据对应的ht[1]的hash key
             h = dictHashKey(d, de->key) & d->ht[1].sizemask;
             de->next = d->ht[1].table[h];
             d->ht[1].table[h] = de;
             d->ht[0].used--;
             d->ht[1].used++;
-            de = nextde;
+            de = nextde; //note 将此dictEntry从ht[0]搬到ht[1]
+            //NOTE while循环一次性将bucket中的一整条list搬到ht[1]中
         }
         d->ht[0].table[d->rehashidx] = NULL;
         d->rehashidx++;
@@ -233,15 +244,17 @@ int dictRehash(dict *d, int n) {
 long long timeInMilliseconds(void) {
     struct timeval tv;
 
-    gettimeofday(&tv,NULL);
+    gettimeofday(&tv,NULL); //NOTE <sys/time.h>
     return (((long long)tv.tv_sec)*1000)+(tv.tv_usec/1000);
 }
 
 /* Rehash for an amount of time between ms milliseconds and ms+1 milliseconds */
+//NOTE 限时Rehash
 int dictRehashMilliseconds(dict *d, int ms) {
     long long start = timeInMilliseconds();
     int rehashes = 0;
 
+    //一次批量rehash一百个bucket
     while(dictRehash(d,100)) {
         rehashes += 100;
         if (timeInMilliseconds()-start > ms) break;
@@ -264,9 +277,12 @@ static void _dictRehashStep(dict *d) {
 /* Add an element to the target hash table */
 int dictAdd(dict *d, void *key, void *val)
 {
+    //NOTE 在dictAddRaw中根据是否处于rehashing状态决定放在ht[0]还是ht[1]中
     dictEntry *entry = dictAddRaw(d,key,NULL);
 
+    //NOTE 前置条件是key不存在d中，如果存在，entry == NULL 返回DICT_ERR
     if (!entry) return DICT_ERR;
+    //NOTE 放好位置后设置其值
     dictSetVal(d, entry, val);
     return DICT_OK;
 }
@@ -295,6 +311,10 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
     dictEntry *entry;
     dictht *ht;
 
+    //NOTE 如果正在rehashing，那么偷放一个单步的rehash步骤在Add步骤中
+    //NOTE! 假设dictIsRehashing恰好是最后一步！
+    //      那么rehash后dict的状态是ht[0]可用，ht[1]不可用
+    //      如下 ht = dictIsRehashing(d) ? &d->ht[1] : &d->ht[0];逻辑正确
     if (dictIsRehashing(d)) _dictRehashStep(d);
 
     /* Get the index of the new element, or -1 if
@@ -333,6 +353,7 @@ int dictReplace(dict *d, void *key, void *val)
         dictSetVal(d, entry, val);
         return 1;
     }
+    //NOTE entry == NULL 表示dict中已经存在该key
 
     /* Set the new value and free the old one. Note that it is important
      * to do that in this order, as the value may just be exactly the same
@@ -340,7 +361,9 @@ int dictReplace(dict *d, void *key, void *val)
      * you want to increment (set), and then decrement (free), and not the
      * reverse. */
     auxentry = *existing;
+    //NOTE 设置新的
     dictSetVal(d, existing, val);
+    //NOTE 释放旧的
     dictFreeVal(d, &auxentry);
     return 0;
 }
@@ -361,6 +384,10 @@ dictEntry *dictAddOrFind(dict *d, void *key) {
 /* Search and remove an element. This is an helper function for
  * dictDelete() and dictUnlink(), please check the top comment
  * of those functions. */
+//NOTE
+
+//param nofree 如为true则找到的节点指针不释放，为false则释放该节点指针的内存
+//return dictEntry* 找到返回被delete的节点指针，未找到返回NULL
 static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
     uint64_t h, idx;
     dictEntry *he, *prevHe;
@@ -381,6 +408,7 @@ static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
                 if (prevHe)
                     prevHe->next = he->next;
                 else
+                    //NOTE 第一个Entry,prevHe == NULL
                     d->ht[table].table[idx] = he->next;
                 if (!nofree) {
                     dictFreeKey(d, he);
@@ -388,6 +416,7 @@ static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
                     zfree(he);
                 }
                 d->ht[table].used--;
+                //NOTE 如果不free，那到底留着干啥？
                 return he;
             }
             prevHe = he;
@@ -425,6 +454,7 @@ int dictDelete(dict *ht, const void *key) {
  * // Do something with entry
  * dictFreeUnlinkedEntry(entry); // <- This does not need to lookup again.
  */
+//NOTE 移除key对应的节点，返回该节点指针
 dictEntry *dictUnlink(dict *ht, const void *key) {
     return dictGenericDelete(ht,key,1);
 }
@@ -439,6 +469,7 @@ void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
 }
 
 /* Destroy an entire dictionary */
+//NOTE Clear过程中不是线程安全的吧？不能在这个过程中add
 int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
     unsigned long i;
 
@@ -489,6 +520,7 @@ dictEntry *dictFind(dict *d, const void *key)
                 return he;
             he = he->next;
         }
+        //NOTE 不在Rehashing ht[1]必然没有数据就返回NULL,这样绕一下感觉不太好
         if (!dictIsRehashing(d)) return NULL;
     }
     return NULL;
@@ -530,7 +562,7 @@ long long dictFingerprint(dict *d) {
         /* For the hashing step we use Tomas Wang's 64 bit integer hash. */
         hash = (~hash) + (hash << 21); // hash = (hash << 21) - hash - 1;
         hash = hash ^ (hash >> 24);
-        hash = (hash + (hash << 3)) + (hash << 8); // hash * 265
+        hash = (hash + (hash << 3)) + (hash << 8); // hash * 265 NOTE(1+8+256)
         hash = hash ^ (hash >> 14);
         hash = (hash + (hash << 2)) + (hash << 4); // hash * 21
         hash = hash ^ (hash >> 28);
@@ -562,9 +594,11 @@ dictIterator *dictGetSafeIterator(dict *d) {
 dictEntry *dictNext(dictIterator *iter)
 {
     while (1) {
+        //NOTE entry == NULL即可能是开始，也可能是遍历到bucket的链表末尾
         if (iter->entry == NULL) {
             dictht *ht = &iter->d->ht[iter->table];
             if (iter->index == -1 && iter->table == 0) {
+                //index == -1 && table == 0 为最开始需要初始化
                 if (iter->safe)
                     iter->d->iterators++;
                 else
@@ -572,11 +606,16 @@ dictEntry *dictNext(dictIterator *iter)
             }
             iter->index++;
             if (iter->index >= (long) ht->size) {
+                //NOTE 访问完一个ht
                 if (dictIsRehashing(iter->d) && iter->table == 0) {
                     iter->table++;
                     iter->index = 0;
                     ht = &iter->d->ht[1];
                 } else {
+                    //NOTE == return NULL，这样break间接表示return NULL
+                    //猜测这样break间接的方式是为了后面如果有ht[2],ht[3]不用改逻辑，因为是*遍历*
+                    //但是如上的if(dictIsRehashing...) 又特殊化了，所以以上猜测不成立
+                    //所以有可能是为了避免编译器报Warning(结尾return NULL无法访问)
                     break;
                 }
             }
@@ -955,16 +994,21 @@ static int _dictExpandIfNeeded(dict *d)
      * table (global setting) or we should avoid it but the ratio between
      * elements/buckets is over the "safe" threshold, we resize doubling
      * the number of buckets. */
+    //NOTE 扩容的时机，当used / size > 5时差不多需要扩容了
     if (d->ht[0].used >= d->ht[0].size &&
         (dict_can_resize ||
          d->ht[0].used/d->ht[0].size > dict_force_resize_ratio))
     {
+        //NOTE 扩容的尺寸是比 used*2 大的最接近的2^n，
+        //如果size足够大(size >= LONG_MAX)，则扩容达到极限值 LONG_MAX +1LU
         return dictExpand(d, d->ht[0].used*2);
     }
     return DICT_OK;
 }
 
 /* Our hash table capability is a power of two */
+
+// NOTE 通常是比size大的最小2^n
 static unsigned long _dictNextPower(unsigned long size)
 {
     unsigned long i = DICT_HT_INITIAL_SIZE;
@@ -993,6 +1037,7 @@ static long _dictKeyIndex(dict *d, const void *key, uint64_t hash, dictEntry **e
     /* Expand the hash table if needed */
     if (_dictExpandIfNeeded(d) == DICT_ERR)
         return -1;
+    //NOTE 如下的遍历ht[0] ht[1]代码不好，不易理解，应该抽成一个函数
     for (table = 0; table <= 1; table++) {
         idx = hash & d->ht[table].sizemask;
         /* Search if this slot does not already contain the given key */
@@ -1000,6 +1045,7 @@ static long _dictKeyIndex(dict *d, const void *key, uint64_t hash, dictEntry **e
         while(he) {
             if (key==he->key || dictCompareKeys(d, key, he->key)) {
                 if (existing) *existing = he;
+                //NOTE 如果遍历找到这个key，返回-1表示key已存在，待进一步考虑是否覆盖
                 return -1;
             }
             he = he->next;
