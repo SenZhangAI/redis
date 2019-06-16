@@ -60,7 +60,7 @@ typedef struct dictType {
 typedef struct dict {
     dictEntry **table;
     dictType *type;
-    unsigned long size; //NOTE 是dictEntry **table 的数组长度，即bucket的大小
+    unsigned long size;
     unsigned long sizemask;
     unsigned long used;
     void *privdata;
@@ -68,7 +68,7 @@ typedef struct dict {
 
 typedef struct dictIterator {
     dict *ht;
-    int index;  //ht[0] 或ht[1]
+    int index;
     dictEntry *entry, *nextEntry;
 } dictIterator;
 

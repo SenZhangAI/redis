@@ -55,6 +55,7 @@
  * enable/disable resizing of the hash table as needed. This is very important
  * for Redis, as we use copy-on-write and don't want to move too much memory
  * around when there is a child performing saving operations.
+ * NOTE 这里COW优化，当dict_can_resize==FALSE时，禁止Resize和expand，除非dict太饱满 used/ size > 5
  *
  * Note that even when dict_can_resize is set to 0, not all resizes are
  * prevented: a hash table is still allowed to grow if the ratio between
@@ -132,6 +133,7 @@ int _dictInit(dict *d, dictType *type,
 
 /* Resize the table to the minimal size that contains all the elements,
  * but with the invariant of a USED/BUCKETS ratio near to <= 1 */
+//NOTE 这是通常是收缩操作，将dict尺寸收缩到最接近minimal(ht[0].used)的2^n
 int dictResize(dict *d)
 {
     int minimal;
@@ -637,6 +639,7 @@ void dictReleaseIterator(dictIterator *iter)
 {
     if (!(iter->index == -1 && iter->table == 0)) {
         if (iter->safe)
+            //NOTE 正在访问，则将访问计数-1
             iter->d->iterators--;
         else
             assert(iter->fingerprint == dictFingerprint(iter->d));
@@ -804,6 +807,7 @@ dictEntry *dictGetFairRandomKey(dict *d) {
 
 /* Function to reverse bits. Algorithm from:
  * http://graphics.stanford.edu/~seander/bithacks.html#ReverseParallel */
+//NOTE TODO
 static unsigned long rev(unsigned long v) {
     unsigned long s = 8 * sizeof(v); // bit size; must be power of 2
     unsigned long mask = ~0;
@@ -898,6 +902,7 @@ static unsigned long rev(unsigned long v) {
  * 3) The reverse cursor is somewhat hard to understand at first, but this
  *    comment is supposed to help.
  */
+//NOTE TODO 遍历dict是一个难点，此算法待进一步了解
 unsigned long dictScan(dict *d,
                        unsigned long v,
                        dictScanFunction *fn,
@@ -1037,7 +1042,6 @@ static long _dictKeyIndex(dict *d, const void *key, uint64_t hash, dictEntry **e
     /* Expand the hash table if needed */
     if (_dictExpandIfNeeded(d) == DICT_ERR)
         return -1;
-    //NOTE 如下的遍历ht[0] ht[1]代码不好，不易理解，应该抽成一个函数
     for (table = 0; table <= 1; table++) {
         idx = hash & d->ht[table].sizemask;
         /* Search if this slot does not already contain the given key */
@@ -1045,7 +1049,7 @@ static long _dictKeyIndex(dict *d, const void *key, uint64_t hash, dictEntry **e
         while(he) {
             if (key==he->key || dictCompareKeys(d, key, he->key)) {
                 if (existing) *existing = he;
-                //NOTE 如果遍历找到这个key，返回-1表示key已存在，待进一步考虑是否覆盖
+                //NOTE 如果遍历找到这个key，返回-1表示key已存在，由调用方进一步考虑是否覆盖
                 return -1;
             }
             he = he->next;
