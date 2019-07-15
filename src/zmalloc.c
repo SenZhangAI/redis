@@ -71,6 +71,8 @@ void zlibc_free(void *ptr) {
 #define dallocx(ptr,flags) je_dallocx(ptr,flags)
 #endif
 
+//NOTE 更新统计使用的内存大小(多少个long)
+//如果不是long的整数倍，例如char，则补齐
 #define update_zmalloc_stat_alloc(__n) do { \
     size_t _n = (__n); \
     if (_n&(sizeof(long)-1)) _n += sizeof(long)-(_n&(sizeof(long)-1)); \
@@ -95,6 +97,7 @@ static void zmalloc_default_oom(size_t size) {
 
 static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
 
+//NOTE 对malloc的封装
 void *zmalloc(size_t size) {
     void *ptr = malloc(size+PREFIX_SIZE);
 
@@ -127,6 +130,7 @@ void zfree_no_tcache(void *ptr) {
 }
 #endif
 
+//NOTE 对calloc的封装，但参数与malloc统一了，而不是标准库的`void *calloc(size_t n, size_t size)`
 void *zcalloc(size_t size) {
     void *ptr = calloc(1, size+PREFIX_SIZE);
 
@@ -183,6 +187,7 @@ size_t zmalloc_size(void *ptr) {
     size_t size = *((size_t*)realptr);
     /* Assume at least that all the allocations are padded at sizeof(long) by
      * the underlying allocator. */
+    //NOTE 这里用了补齐，如果size没有对齐到long整数倍，size += 缺的部分长度
     if (size&(sizeof(long)-1)) size += sizeof(long)-(size&(sizeof(long)-1));
     return size+PREFIX_SIZE;
 }

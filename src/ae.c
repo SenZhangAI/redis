@@ -46,6 +46,7 @@
 
 /* Include the best multiplexing layer supported by this system.
  * The following should be ordered by performances, descending. */
+//NOTE 优先级由高到低: evport > epoll > kqueue > select
 #ifdef HAVE_EVPORT
 #include "ae_evport.c"
 #else
