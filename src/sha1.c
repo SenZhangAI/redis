@@ -28,6 +28,8 @@ A million repetitions of "a"
 #include "sha1.h"
 #include "config.h"
 
+//NOTE? 这里rol存在疑问，例如如果value 左移两位，value >> (32 - (bits)) 这里value是否已被改变呢？
+//以及左移最高位补0还是1
 #define rol(value, bits) (((value) << (bits)) | ((value) >> (32 - (bits))))
 
 /* blk0() and blk() perform the initial expand. */

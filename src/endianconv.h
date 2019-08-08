@@ -63,6 +63,7 @@ uint64_t intrev64(uint64_t v);
 
 /* The functions htonu64() and ntohu64() convert the specified value to
  * network byte ordering and back. In big endian systems they are no-ops. */
+//NOTE 网络字节序规定为大端字节序，如本地为小端可用系统提供的htonl()函数转换成大端
 #if (BYTE_ORDER == BIG_ENDIAN)
 #define htonu64(v) (v)
 #define ntohu64(v) (v)

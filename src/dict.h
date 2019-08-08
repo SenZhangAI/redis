@@ -68,7 +68,7 @@ typedef struct dictType {
  * implement incremental rehashing, for the old to the new table. */
 typedef struct dictht {
     dictEntry **table;
-    unsigned long size;
+    unsigned long size;  //NOTE 是dictEntry **table 的数组长度，即bucket的大小
     unsigned long sizemask;
     unsigned long used;
 } dictht;
@@ -77,7 +77,9 @@ typedef struct dict {
     dictType *type;
     void *privdata;
     dictht ht[2];
+    //NOTE rehashidx表示当前rehash进行到ht[0].table[rehashidx]了
     long rehashidx; /* rehashing not in progress if rehashidx == -1 */
+    //NOTE iterators 有多少个iterator(iter->safe==TRUE的iter, FALSE不计数)正在访问
     unsigned long iterators; /* number of iterators currently running */
 } dict;
 
@@ -87,8 +89,8 @@ typedef struct dict {
  * should be called while iterating. */
 typedef struct dictIterator {
     dict *d;
-    long index;
-    int table, safe;
+    long index;  //ht[0] 或ht[1]的table的index，用于遍历
+    int table, safe; //table = 0 or 1 选择th[0]或th[1]
     dictEntry *entry, *nextEntry;
     /* unsafe iterator fingerprint for misuse detection. */
     long long fingerprint;
