@@ -185,6 +185,7 @@ int dictExpand(dict *d, unsigned long size)
  * guaranteed that this function will rehash even a single bucket, since it
  * will visit at max N*10 empty buckets in total, otherwise the amount of
  * work it does would be unbound and the function may block for a long time. */
+//NOTE 每次执行n个rehash步骤，而不是一次执行完
 int dictRehash(dict *d, int n) {
     int empty_visits = n*10; /* Max number of empty buckets to visit. */
     if (!dictIsRehashing(d)) return 0;
@@ -233,6 +234,16 @@ int dictRehash(dict *d, int n) {
 long long timeInMilliseconds(void) {
     struct timeval tv;
 
+    //NOTE 参见 [浅谈时间函数gettimeofday的成本](https://blog.csdn.net/russell_tao/article/details/7185588)
+    // #include <sys/time.h>
+    // int gettimeofday(struct timeval*tv, struct timezone *tz);
+    // 1. gettimeofday是C库调用，其封装了系统调用sys_gettimeofday
+    // 2. 内核对于x86_64体系结构下，除了普通的系统调用外，还提供了sysenter和vsyscall方式来获取内核态的数据
+    // 3. 如果我们用strace命令跟踪，就会发现x86_64 gettimeofday 命令未执行系统调用（i386体系会有），
+    //    这是因为：x86_64体系上，使用vsyscall实现了gettimeofday这个系统调用
+    // 4. 创建了一个共享的内存页面，它是在内核态的，它的数据由内核来维护，但是，用户态也有权限访问这个内核页面。
+    //    由此，不通过系统调用及中断, gettimeofday也能拿到了系统时间，开销很低，小于 1 ms
+    // 5. 系统有个高频的中断更新系统时间，所以不必担心时间精度很低，可以达到微秒级
     gettimeofday(&tv,NULL);
     return (((long long)tv.tv_sec)*1000)+(tv.tv_usec/1000);
 }
@@ -244,6 +255,7 @@ int dictRehashMilliseconds(dict *d, int ms) {
 
     while(dictRehash(d,100)) {
         rehashes += 100;
+        //NOTE，每次hash完看时间差是否超过阈值，虽不是精确的微秒，但很方便
         if (timeInMilliseconds()-start > ms) break;
     }
     return rehashes;
@@ -257,6 +269,7 @@ int dictRehashMilliseconds(dict *d, int ms) {
  * This function is called by common lookup or update operations in the
  * dictionary so that the hash table automatically migrates from H1 to H2
  * while it is actively used. */
+//NOTE? 这里为什么不inline?
 static void _dictRehashStep(dict *d) {
     if (d->iterators == 0) dictRehash(d,1);
 }

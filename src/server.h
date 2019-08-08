@@ -637,12 +637,18 @@ typedef struct RedisModuleDigest {
 
 #define OBJ_SHARED_REFCOUNT INT_MAX
 typedef struct redisObject {
-    unsigned type:4;
-    unsigned encoding:4;
+    //NOTE type 一共五种 OBJ_STRING OBJ_LIST OBJ_SET OBJ_ZSET OBJ_HASH
+    //NOTE key总是OBJ_STRING，值有五种
+    unsigned type:4; //NOTE  4 bit type range {0..15}, see https://en.cppreference.com/w/c/language/bit_field
+    //NOTE encoding 有以下几种:
+    // OBJ_ENCODING_RAW OBJ_ENCODING_INT OBJ_ENCODING_HT OBJ_ENCODING_ZIPMAP OBJ_ENCODING_LINKEDLIST OBJ_ENCODING_ZIPLIST
+    // OBJ_ENCODING_INTSET OBJ_ENCODING_SKIPLIST OBJ_ENCODING_EMBSTR OBJ_ENCODING_QUICKLIST OBJ_ENCODING_STREAM
+    unsigned encoding:4; // NOTE 4 bit encoding range {0..15}
+    //NOTe LRU_BITS 默认24位，所以type/encoding/lru共32位
     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
                             * LFU data (least significant 8 bits frequency
                             * and most significant 16 bits access time). */
-    int refcount;
+    int refcount; //NOTE 引用计数
     void *ptr;
 } robj;
 

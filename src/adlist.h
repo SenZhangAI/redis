@@ -33,6 +33,7 @@
 
 /* Node, List, and Iterator are the only data structures used currently. */
 
+//NOTE 参见server.h Linked List已被弃用
 typedef struct listNode {
     struct listNode *prev;
     struct listNode *next;
